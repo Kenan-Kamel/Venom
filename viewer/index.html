@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Venom Analyzer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+:root {
+  --bg: #0e1117;
+  --bg-raised: #161b22;
+  --bg-surface: #1c2129;
+  --bg-hover: #252d38;
+  --fg: #c9d1d9;
+  --fg-muted: #8b949e;
+  --fg-bright: #f0f6fc;
+  --border: #30363d;
+  --accent: #58a6ff;
+  --accent-dim: rgba(88,166,255,0.15);
+  --critical: #f85149;
+  --critical-dim: rgba(248,81,73,0.15);
+  --high: #f0883e;
+  --high-dim: rgba(240,136,62,0.15);
+  --medium: #d29922;
+  --medium-dim: rgba(210,153,34,0.15);
+  --low: #3fb950;
+  --low-dim: rgba(63,185,80,0.15);
+  --none: #484f58;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
+  --radius: 8px;
+  --radius-sm: 4px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #ffffff; --bg-raised: #f6f8fa; --bg-surface: #f0f2f5; --bg-hover: #e8ebef;
+    --fg: #1f2328; --fg-muted: #656d76; --fg-bright: #0d1117; --border: #d0d7de;
+    --accent: #0969da; --accent-dim: rgba(9,105,218,0.1);
+    --critical: #cf222e; --critical-dim: rgba(207,34,46,0.1);
+    --high: #bc4c00; --high-dim: rgba(188,76,0,0.1);
+    --medium: #9a6700; --medium-dim: rgba(154,103,0,0.1);
+    --low: #1a7f37; --low-dim: rgba(26,127,55,0.1);
+    --none: #afb8c1;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #ffffff; --bg-raised: #f6f8fa; --bg-surface: #f0f2f5; --bg-hover: #e8ebef;
+  --fg: #1f2328; --fg-muted: #656d76; --fg-bright: #0d1117; --border: #d0d7de;
+  --accent: #0969da; --accent-dim: rgba(9,105,218,0.1);
+  --critical: #cf222e; --critical-dim: rgba(207,34,46,0.1);
+  --high: #bc4c00; --high-dim: rgba(188,76,0,0.1);
+  --medium: #9a6700; --medium-dim: rgba(154,103,0,0.1);
+  --low: #1a7f37; --low-dim: rgba(26,127,55,0.1);
+  --none: #afb8c1;
+  color-scheme: light;
+}
+
+* { margin: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app { max-width: 1440px; margin: 0 auto; padding: 0 20px; min-height: 100vh; display: flex; flex-direction: column; }
+
+/* Header */
+.header {
+  position: sticky; top: 0; z-index: 50; background: var(--bg);
+  border-bottom: 1px solid var(--border); padding: 12px 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+}
+.header-brand { display: flex; align-items: center; gap: 10px; }
+.logo { width: 32px; height: 32px; }
+.header-title { font-size: 18px; font-weight: 700; color: var(--fg-bright); letter-spacing: -0.02em; }
+.header-subtitle { font-size: 12px; color: var(--fg-muted); font-family: var(--font-mono); }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.load-btn {
+  background: var(--accent); color: #fff; border: none; padding: 6px 14px;
+  border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer; font-family: var(--font-body);
+}
+.load-btn:hover { opacity: 0.9; }
+
+/* Git info bar */
+.git-bar {
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 14px; font-size: 12px; color: var(--fg-muted); font-family: var(--font-mono);
+  display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px;
+}
+.git-bar span { white-space: nowrap; }
+.git-bar strong { color: var(--fg); }
+
+/* Tab navigation */
+.tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-top: 12px; }
+.tab-btn {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  margin-bottom: -2px; padding: 10px 20px; font-size: 14px; font-weight: 600;
+  color: var(--fg-muted); cursor: pointer; font-family: var(--font-body); transition: color 0.15s;
+}
+.tab-btn:hover { color: var(--fg); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; flex: 1; }
+.tab-content.active { display: block; }
+
+/* Stats bar */
+.stats-bar {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px; padding: 16px 0; border-bottom: 1px solid var(--border);
+}
+.stat-card {
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 16px; display: flex; flex-direction: column; gap: 2px;
+}
+.stat-value { font-size: 28px; font-weight: 700; color: var(--fg-bright); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); }
+.stat-card[data-type="critical"] .stat-value { color: var(--critical); }
+.stat-card[data-type="high"] .stat-value { color: var(--high); }
+.stat-card[data-type="medium"] .stat-value { color: var(--medium); }
+.stat-card[data-type="low"] .stat-value { color: var(--low); }
+
+/* Toolbar */
+.toolbar { display: flex; gap: 8px; padding: 12px 0; flex-wrap: wrap; align-items: center; }
+.search-box {
+  flex: 1; min-width: 200px; background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 7px 12px; color: var(--fg); font-size: 13px;
+  font-family: var(--font-body); outline: none;
+}
+.search-box:focus { border-color: var(--accent); }
+.search-box::placeholder { color: var(--fg-muted); }
+.filter-group { display: flex; gap: 4px; }
+.filter-btn {
+  background: var(--bg-raised); border: 1px solid var(--border); color: var(--fg-muted);
+  padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 500;
+  cursor: pointer; font-family: var(--font-body); white-space: nowrap; transition: background 0.15s, color 0.15s;
+}
+.filter-btn:hover { background: var(--bg-hover); color: var(--fg); }
+.filter-btn.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+select.filter-select {
+  background: var(--bg-raised); border: 1px solid var(--border); color: var(--fg);
+  padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; font-family: var(--font-body); cursor: pointer;
+}
+
+/* Content area */
+.content { display: grid; grid-template-columns: 1fr 420px; gap: 16px; padding: 16px 0 32px; flex: 1; align-items: start; }
+@media (max-width: 900px) { .content { grid-template-columns: 1fr; } .detail-panel { order: -1; } }
+
+/* Findings list */
+.findings-list { display: flex; flex-direction: column; gap: 6px; }
+.finding-count { font-size: 12px; color: var(--fg-muted); padding-bottom: 4px; font-variant-numeric: tabular-nums; }
+
+.finding-card {
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 16px; cursor: pointer; transition: background 0.15s;
+  display: grid; grid-template-columns: 4px 1fr auto; gap: 12px; align-items: start;
+}
+.finding-card:hover { background: var(--bg-hover); }
+.finding-card.selected { border-color: var(--accent); background: var(--accent-dim); }
+
+.severity-bar { width: 4px; border-radius: 2px; align-self: stretch; min-height: 32px; }
+.severity-bar[data-sev="critical"] { background: var(--critical); }
+.severity-bar[data-sev="high"] { background: var(--high); }
+.severity-bar[data-sev="medium"] { background: var(--medium); }
+.severity-bar[data-sev="low"] { background: var(--low); }
+
+.finding-body { min-width: 0; }
+.finding-title { font-size: 13px; font-weight: 600; color: var(--fg-bright); line-height: 1.3; word-break: break-word; }
+.finding-location { font-size: 12px; font-family: var(--font-mono); color: var(--fg-muted); margin-top: 2px; }
+.finding-meta { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.tag { font-size: 11px; font-weight: 500; padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+.tag-cwe { background: var(--accent-dim); color: var(--accent); }
+.tag-analyzer { background: var(--bg-surface); color: var(--fg-muted); }
+.tag-verdict-confirmed { background: var(--critical-dim); color: var(--critical); }
+.tag-verdict-likely { background: var(--high-dim); color: var(--high); }
+.tag-verdict-unlikely { background: var(--bg-surface); color: var(--fg-muted); }
+.tag-verdict-false_positive { background: var(--low-dim); color: var(--low); }
+
+.finding-score { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.score-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg-bright); }
+.score-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); }
+
+/* Detail panel */
+.detail-panel {
+  position: sticky; top: 60px; background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; max-height: calc(100vh - 80px); overflow-y: auto;
+}
+.detail-empty { padding: 48px 24px; text-align: center; color: var(--fg-muted); font-size: 13px; }
+.detail-header { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.detail-sev { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.detail-sev[data-sev="critical"] { color: var(--critical); }
+.detail-sev[data-sev="high"] { color: var(--high); }
+.detail-sev[data-sev="medium"] { color: var(--medium); }
+.detail-sev[data-sev="low"] { color: var(--low); }
+.detail-title { font-size: 16px; font-weight: 700; color: var(--fg-bright); line-height: 1.3; }
+.detail-loc { font-size: 13px; font-family: var(--font-mono); color: var(--accent); margin-top: 4px; }
+.detail-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.detail-section:last-child { border-bottom: none; }
+.detail-section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); margin-bottom: 8px; }
+.detail-message { font-size: 13px; color: var(--fg); line-height: 1.6; }
+.detail-code {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+  overflow-x: auto; white-space: pre; color: var(--fg); max-height: 300px; overflow-y: auto;
+}
+.code-line { display: block; }
+.code-line-num { display: inline-block; width: 40px; text-align: right; padding-right: 12px; color: var(--fg-muted); user-select: none; }
+.code-line.highlighted { background: var(--critical-dim); border-radius: 2px; }
+.analyzer-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+.analyzer-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.llm-verdict { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; }
+.llm-verdict[data-v="confirmed"] { background: var(--critical-dim); color: var(--critical); }
+.llm-verdict[data-v="likely"] { background: var(--high-dim); color: var(--high); }
+.llm-verdict[data-v="unlikely"] { background: var(--bg-surface); color: var(--fg-muted); }
+.llm-verdict[data-v="false_positive"] { background: var(--low-dim); color: var(--low); }
+.llm-explanation { font-size: 13px; color: var(--fg); line-height: 1.6; margin-top: 8px; }
+.score-breakdown { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }
+.score-breakdown dt { color: var(--fg-muted); }
+.score-breakdown dd { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg-bright); }
+.score-bar-track { grid-column: 1 / -1; height: 4px; background: var(--bg); border-radius: 2px; margin: 4px 0 8px; }
+.score-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.3s; }
+
+/* Charts */
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+@media (max-width: 700px) { .charts-row { grid-template-columns: 1fr; } }
+.chart-card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.chart-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin-bottom: 12px; }
+.bar-chart { display: flex; flex-direction: column; gap: 6px; }
+.bar-row { display: flex; align-items: center; gap: 8px; }
+.bar-label { width: 100px; font-size: 12px; color: var(--fg); text-align: right; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { flex: 1; height: 18px; background: var(--bg); border-radius: 3px; overflow: hidden; min-width: 0; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.bar-value { width: 32px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg-muted); flex-shrink: 0; }
+
+/* Pagination */
+.pagination { display: flex; justify-content: center; gap: 6px; padding: 16px 0; }
+.page-btn {
+  background: var(--bg-raised); border: 1px solid var(--border); color: var(--fg);
+  padding: 6px 12px; border-radius: var(--radius-sm); font-size: 13px; cursor: pointer; font-family: var(--font-body);
+}
+.page-btn:hover { background: var(--bg-hover); }
+.page-btn:disabled { opacity: 0.4; cursor: default; }
+.page-btn.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+/* ============ CODEBASE MAP ============ */
+.map-container { padding: 16px 0; flex: 1; }
+.map-toolbar {
+  display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;
+}
+.breadcrumb {
+  display: flex; align-items: center; gap: 4px; font-size: 13px; font-family: var(--font-mono); flex: 1; min-width: 0;
+}
+.breadcrumb-item {
+  color: var(--accent); cursor: pointer; background: none; border: none;
+  font-family: var(--font-mono); font-size: 13px; padding: 2px 4px;
+}
+.breadcrumb-item:hover { text-decoration: underline; }
+.breadcrumb-item.current { color: var(--fg-bright); cursor: default; font-weight: 600; }
+.breadcrumb-sep { color: var(--fg-muted); }
+.map-mode-btn {
+  background: var(--bg-raised); border: 1px solid var(--border); color: var(--fg-muted);
+  padding: 6px 12px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 500;
+  cursor: pointer; font-family: var(--font-body);
+}
+.map-mode-btn.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+.map-layout { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .map-layout { grid-template-columns: 1fr; } }
+
+.treemap-wrapper {
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; position: relative;
+}
+#treemap-svg { display: block; width: 100%; }
+
+.treemap-cell { cursor: pointer; transition: opacity 0.15s; }
+.treemap-cell:hover { opacity: 0.85; }
+.treemap-label { pointer-events: none; fill: var(--fg-bright); font-family: 'Inter', sans-serif; font-weight: 600; }
+.treemap-sublabel { pointer-events: none; fill: var(--fg-muted); font-family: 'IBM Plex Mono', monospace; font-size: 10px; }
+
+.map-file-panel {
+  background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius);
+  max-height: calc(100vh - 160px); overflow-y: auto; position: sticky; top: 60px;
+}
+.map-file-header {
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 13px; color: var(--fg-bright); font-weight: 600;
+}
+.map-file-stats {
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  display: flex; gap: 16px; font-size: 12px; color: var(--fg-muted);
+}
+.map-file-stats strong { color: var(--fg); }
+
+.file-gutter {
+  position: relative; padding: 12px 16px; min-height: 200px;
+}
+.gutter-track {
+  position: relative; width: 100%; background: var(--bg-surface); border-radius: 4px;
+  height: 100%; min-height: 200px;
+}
+.gutter-marker {
+  position: absolute; left: 0; right: 0; height: 3px; border-radius: 2px; cursor: pointer;
+  transition: height 0.15s, opacity 0.15s;
+}
+.gutter-marker:hover { height: 5px; opacity: 1 !important; z-index: 2; }
+.gutter-marker[data-sev="critical"] { background: var(--critical); }
+.gutter-marker[data-sev="high"] { background: var(--high); }
+.gutter-marker[data-sev="medium"] { background: var(--medium); }
+.gutter-marker[data-sev="low"] { background: var(--low); }
+
+.marker-tooltip {
+  position: fixed; z-index: 100; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; max-width: 340px;
+  pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.marker-tooltip .tt-line { font-family: var(--font-mono); color: var(--accent); margin-bottom: 2px; }
+.marker-tooltip .tt-msg { color: var(--fg); }
+.marker-tooltip .tt-meta { color: var(--fg-muted); margin-top: 4px; font-size: 11px; }
+
+.map-findings-list { padding: 0; }
+.map-finding-item {
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  font-size: 12px; cursor: pointer; transition: background 0.15s;
+  display: grid; grid-template-columns: 4px 1fr; gap: 10px; align-items: start;
+}
+.map-finding-item:hover { background: var(--bg-hover); }
+.map-finding-item:last-child { border-bottom: none; }
+.mf-line { font-family: var(--font-mono); color: var(--accent); }
+.mf-msg { color: var(--fg); line-height: 1.4; }
+.mf-meta { color: var(--fg-muted); font-size: 11px; margin-top: 2px; }
+
+.map-legend {
+  display: flex; gap: 12px; font-size: 11px; color: var(--fg-muted); align-items: center;
+}
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+/* Loading / empty */
+.loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 16px; }
+.loading-text { font-size: 15px; color: var(--fg-muted); text-align: center; max-width: 380px; line-height: 1.6; }
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius); padding: 48px 24px;
+  text-align: center; cursor: pointer; transition: border-color 0.2s;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); }
+
+.map-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 48px; color: var(--fg-muted); font-size: 13px; gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="loading-state" id="loading-state">
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+      <path d="M32 4C16.536 4 4 16.536 4 32s12.536 28 28 28 28-12.536 28-28" stroke="var(--fg-muted)" stroke-width="3" stroke-linecap="round" opacity="0.2"/>
+      <path d="M32 4l8 12-8 4-8-4z" fill="var(--accent)" opacity="0.6"/>
+      <path d="M20 20l12 12 12-12" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path d="M32 32v20" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="24" cy="44" r="3" fill="var(--critical)" opacity="0.7"/>
+      <circle cx="40" cy="44" r="3" fill="var(--high)" opacity="0.7"/>
+    </svg>
+    <div class="loading-text" style="font-weight:600;color:var(--fg-bright);font-size:20px;">Venom Analyzer</div>
+    <div class="loading-text">Load a <code style="font-family:var(--font-mono);background:var(--bg-surface);padding:2px 6px;border-radius:3px">venom-data.json</code> file to view static analysis results.</div>
+    <div class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-label="Drop JSON file or click to load">
+      <div style="font-size:13px;color:var(--fg-muted);line-height:1.7">
+        Drop file here or click to browse<br>
+        <span style="font-size:12px;opacity:0.7">Accepts venom-data.json output</span>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--fg-muted);margin-top:8px">
+      Or use a <button class="load-btn" id="demo-btn" style="font-size:12px;padding:4px 10px">demo dataset</button>
+    </div>
+  </div>
+
+  <div id="dashboard" hidden>
+    <header class="header">
+      <div class="header-brand">
+        <svg class="logo" viewBox="0 0 32 32" fill="none">
+          <rect width="32" height="32" rx="6" fill="var(--accent)"/>
+          <path d="M10 10l6 6 6-6" stroke="#fff" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+          <path d="M16 16v8" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="12" cy="22" r="2" fill="rgba(255,255,255,0.7)"/>
+          <circle cx="20" cy="22" r="2" fill="rgba(255,255,255,0.7)"/>
+        </svg>
+        <div>
+          <div class="header-title">Venom</div>
+          <div class="header-subtitle" id="target-path"></div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="header-subtitle" id="scan-time"></div>
+        <button class="load-btn" id="load-new-btn">Load file</button>
+      </div>
+    </header>
+
+    <div class="git-bar" id="git-bar" hidden></div>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="findings">Findings</button>
+      <button class="tab-btn" data-tab="codemap">Codebase Map</button>
+    </nav>
+
+    <!-- FINDINGS TAB -->
+    <div class="tab-content active" id="tab-findings">
+      <div class="stats-bar" id="stats-bar"></div>
+      <div class="charts-row" id="charts-row"></div>
+      <div class="toolbar">
+        <input type="text" class="search-box" id="search-input" placeholder="Search findings by message, file, CWE..." aria-label="Search findings">
+        <div class="filter-group" id="severity-filters"></div>
+        <select class="filter-select" id="analyzer-filter" aria-label="Filter by analyzer"><option value="">All analyzers</option></select>
+        <select class="filter-select" id="cwe-filter" aria-label="Filter by CWE"><option value="">All CWEs</option></select>
+        <select class="filter-select" id="verdict-filter" aria-label="Filter by LLM verdict"><option value="">All verdicts</option></select>
+        <select class="filter-select" id="sort-select" aria-label="Sort by">
+          <option value="score">Score</option>
+          <option value="severity">Severity</option>
+          <option value="file">File</option>
+          <option value="cwe">CWE</option>
+          <option value="analyzers">Corroboration</option>
+        </select>
+      </div>
+      <div class="content">
+        <div>
+          <div class="finding-count" id="finding-count"></div>
+          <div class="findings-list" id="findings-list"></div>
+          <div class="pagination" id="pagination"></div>
+        </div>
+        <div class="detail-panel" id="detail-panel">
+          <div class="detail-empty">Select a finding to view details</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CODEBASE MAP TAB -->
+    <div class="tab-content" id="tab-codemap">
+      <div class="map-container">
+        <div class="map-toolbar">
+          <div class="breadcrumb" id="breadcrumb"></div>
+          <div class="map-legend">
+            <span style="font-weight:500">Severity:</span>
+            <span class="legend-item"><span class="legend-dot" style="background:var(--critical)"></span>Critical</span>
+            <span class="legend-item"><span class="legend-dot" style="background:var(--high)"></span>High</span>
+            <span class="legend-item"><span class="legend-dot" style="background:var(--medium)"></span>Medium</span>
+            <span class="legend-item"><span class="legend-dot" style="background:var(--low)"></span>Low</span>
+            <span class="legend-item"><span class="legend-dot" style="background:var(--none)"></span>Clean</span>
+          </div>
+          <div>
+            <button class="map-mode-btn active" data-sizer="loc" title="Size by lines of code">LOC</button>
+            <button class="map-mode-btn" data-sizer="findings" title="Size by finding count">Findings</button>
+          </div>
+        </div>
+        <div class="map-layout">
+          <div class="treemap-wrapper" id="treemap-wrapper">
+            <svg id="treemap-svg"></svg>
+          </div>
+          <div class="map-file-panel" id="map-file-panel">
+            <div class="map-empty">Click a file in the treemap to see its findings</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".json" hidden>
+
+<script>
+(function() {
+  const PER_PAGE = 30;
+  let data = null;
+  let filtered = [];
+  let selectedId = null;
+  let page = 0;
+  let severityFilters = new Set();
+  let mapSizer = 'loc';
+  let mapPath = [];
+  let tooltip = null;
+
+  const $ = s => document.querySelector(s);
+  const $$ = s => document.querySelectorAll(s);
+
+  // ---------- File loading ----------
+  const fileInput = $('#file-input');
+  const dropZone = $('#drop-zone');
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+  $('#load-new-btn').addEventListener('click', () => fileInput.click());
+  $('#demo-btn').addEventListener('click', loadDemo);
+
+  function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try { data = JSON.parse(e.target.result); init(); }
+      catch { /* invalid JSON */ }
+    };
+    reader.readAsText(file);
+  }
+
+  function loadDemo() { data = generateDemoData(); init(); }
+
+  // ---------- Tabs ----------
+  $$('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('.tab-btn').forEach(b => b.classList.remove('active'));
+      $$('.tab-content').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      $(`#tab-${btn.dataset.tab}`).classList.add('active');
+      if (btn.dataset.tab === 'codemap') renderTreemap();
+    });
+  });
+
+  // ---------- Init ----------
+  function init() {
+    $('#loading-state').hidden = true;
+    $('#dashboard').hidden = false;
+    $('#target-path').textContent = data.metadata?.target || 'unknown target';
+    $('#scan-time').textContent = data.metadata?.timestamp ? new Date(data.metadata.timestamp).toLocaleString() : '';
+
+    const git = data.metadata?.git;
+    const gitBar = $('#git-bar');
+    if (git && (git.commit || git.branch)) {
+      gitBar.hidden = false;
+      gitBar.innerHTML = [
+        git.commit ? `<span>Commit: <strong>${esc(git.commit.slice(0,8))}</strong></span>` : '',
+        git.branch ? `<span>Branch: <strong>${esc(git.branch)}</strong></span>` : '',
+        git.author ? `<span>Author: <strong>${esc(git.author)}</strong></span>` : '',
+        git.date ? `<span>Date: <strong>${esc(git.date)}</strong></span>` : '',
+      ].filter(Boolean).join('');
+    } else {
+      gitBar.hidden = true;
+    }
+
+    renderStats();
+    renderCharts();
+    populateFilters();
+    applyFilters();
+    mapPath = [];
+  }
+
+  // ---------- Stats ----------
+  function renderStats() {
+    const s = data.summary || {};
+    const bySev = s.by_severity || {};
+    const total = data.findings?.length || 0;
+    $('#stats-bar').innerHTML = `
+      <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">Total</div></div>
+      <div class="stat-card" data-type="critical"><div class="stat-value">${bySev.critical||0}</div><div class="stat-label">Critical</div></div>
+      <div class="stat-card" data-type="high"><div class="stat-value">${bySev.high||0}</div><div class="stat-label">High</div></div>
+      <div class="stat-card" data-type="medium"><div class="stat-value">${bySev.medium||0}</div><div class="stat-label">Medium</div></div>
+      <div class="stat-card" data-type="low"><div class="stat-value">${bySev.low||0}</div><div class="stat-label">Low</div></div>
+      <div class="stat-card"><div class="stat-value">${data.metadata?.analyzers_used?.length||0}</div><div class="stat-label">Analyzers</div></div>
+    `;
+  }
+
+  // ---------- Charts ----------
+  function renderCharts() {
+    const s = data.summary || {};
+    const byCwe = s.by_cwe || {};
+    const byAnalyzer = s.by_analyzer || {};
+    const cweEntries = Object.entries(byCwe).sort((a,b) => b[1]-a[1]).slice(0,8);
+    const analyzerEntries = Object.entries(byAnalyzer).sort((a,b) => b[1]-a[1]);
+    const maxCwe = cweEntries[0]?.[1] || 1;
+    const maxAn = analyzerEntries[0]?.[1] || 1;
+
+    $('#charts-row').innerHTML = `
+      <div class="chart-card">
+        <div class="chart-title">Findings by CWE</div>
+        <div class="bar-chart">${cweEntries.map(([c,n]) => `
+          <div class="bar-row">
+            <div class="bar-label" title="${esc(c)}">${esc(c)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${(n/maxCwe)*100}%;background:var(--accent)"></div></div>
+            <div class="bar-value">${n}</div>
+          </div>`).join('')}</div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Findings by Analyzer</div>
+        <div class="bar-chart">${analyzerEntries.map(([a,n]) => `
+          <div class="bar-row">
+            <div class="bar-label" title="${esc(a)}">${esc(a)}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${(n/maxAn)*100}%;background:var(--accent)"></div></div>
+            <div class="bar-value">${n}</div>
+          </div>`).join('')}</div>
+      </div>
+    `;
+  }
+
+  // ---------- Filters ----------
+  function populateFilters() {
+    const sevBar = $('#severity-filters');
+    sevBar.innerHTML = ['critical','high','medium','low'].map(s =>
+      `<button class="filter-btn" data-severity="${s}">${s}</button>`
+    ).join('');
+    sevBar.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const s = btn.dataset.severity;
+        if (severityFilters.has(s)) { severityFilters.delete(s); btn.classList.remove('active'); }
+        else { severityFilters.add(s); btn.classList.add('active'); }
+        page = 0; applyFilters();
+      });
+    });
+
+    const sets = { analyzer: new Set(), cwe: new Set(), verdict: new Set() };
+    (data.findings||[]).forEach(f => {
+      (f.analyzers||[]).forEach(a => sets.analyzer.add(a));
+      if (f.cwe_id) sets.cwe.add(`CWE-${f.cwe_id}`);
+      if (f.llm_verdict) sets.verdict.add(f.llm_verdict);
+    });
+
+    $('#analyzer-filter').innerHTML = '<option value="">All analyzers</option>' + [...sets.analyzer].sort().map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+    $('#cwe-filter').innerHTML = '<option value="">All CWEs</option>' + [...sets.cwe].sort().map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    $('#verdict-filter').innerHTML = '<option value="">All verdicts</option>' + [...sets.verdict].sort().map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+
+    $('#search-input').addEventListener('input', () => { page=0; applyFilters(); });
+    $('#analyzer-filter').addEventListener('change', () => { page=0; applyFilters(); });
+    $('#cwe-filter').addEventListener('change', () => { page=0; applyFilters(); });
+    $('#verdict-filter').addEventListener('change', () => { page=0; applyFilters(); });
+    $('#sort-select').addEventListener('change', () => { page=0; applyFilters(); });
+  }
+
+  function applyFilters() {
+    const search = ($('#search-input').value||'').toLowerCase();
+    const aVal = $('#analyzer-filter').value;
+    const cVal = $('#cwe-filter').value;
+    const vVal = $('#verdict-filter').value;
+
+    filtered = (data.findings||[]).filter(f => {
+      if (severityFilters.size && !severityFilters.has(f.severity)) return false;
+      if (aVal && !(f.analyzers||[]).includes(aVal)) return false;
+      if (cVal && `CWE-${f.cwe_id}` !== cVal) return false;
+      if (vVal && f.llm_verdict !== vVal) return false;
+      if (search) {
+        const hay = [f.message,f.file,f.cwe_name,`CWE-${f.cwe_id}`,...(f.analyzers||[])].join(' ').toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    });
+    sortFindings(); renderList(); renderPagination();
+  }
+
+  function sortFindings() {
+    const sort = $('#sort-select').value;
+    filtered.sort((a,b) => {
+      switch(sort) {
+        case 'score': return (b.composite_score||0)-(a.composite_score||0);
+        case 'severity': return sevOrder(a.severity)-sevOrder(b.severity);
+        case 'file': return (a.file||'').localeCompare(b.file||'');
+        case 'cwe': return (a.cwe_id||'').localeCompare(b.cwe_id||'');
+        case 'analyzers': return (b.analyzers?.length||0)-(a.analyzers?.length||0);
+        default: return 0;
+      }
+    });
+  }
+
+  // ---------- Findings list ----------
+  function renderList() {
+    const list = $('#findings-list');
+    const start = page * PER_PAGE;
+    const items = filtered.slice(start, start+PER_PAGE);
+    $('#finding-count').textContent = `${filtered.length} finding${filtered.length!==1?'s':''}`;
+
+    if (!items.length) {
+      list.innerHTML = '<div style="text-align:center;padding:32px;color:var(--fg-muted)">No findings match your filters</div>';
+      return;
+    }
+
+    list.innerHTML = items.map(f => `
+      <div class="finding-card ${f.id===selectedId?'selected':''}" data-id="${esc(f.id)}" tabindex="0" role="button">
+        <div class="severity-bar" data-sev="${f.severity||'low'}"></div>
+        <div class="finding-body">
+          <div class="finding-title">${esc(truncate(f.message,120))}</div>
+          <div class="finding-location">${esc(shortPath(f.file))}:${f.line||'?'}</div>
+          <div class="finding-meta">
+            ${f.cwe_id ? `<span class="tag tag-cwe">CWE-${esc(f.cwe_id)}</span>` : ''}
+            ${(f.analyzers||[]).slice(0,3).map(a => `<span class="tag tag-analyzer">${esc(a)}</span>`).join('')}
+            ${f.llm_verdict ? `<span class="tag tag-verdict-${f.llm_verdict}">${f.llm_verdict}</span>` : ''}
+          </div>
+        </div>
+        <div class="finding-score">
+          <div class="score-value">${(f.composite_score||0).toFixed(2)}</div>
+          <div class="score-label">score</div>
+        </div>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.finding-card').forEach(card => {
+      const handler = () => {
+        selectedId = card.dataset.id;
+        $$('.finding-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        renderDetail();
+      };
+      card.addEventListener('click', handler);
+      card.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); handler(); }});
+    });
+  }
+
+  function renderPagination() {
+    const totalPages = Math.ceil(filtered.length / PER_PAGE);
+    const pag = $('#pagination');
+    if (totalPages <= 1) { pag.innerHTML = ''; return; }
+    let html = `<button class="page-btn" ${page===0?'disabled':''} data-page="${page-1}">&laquo;</button>`;
+    for (let i=0; i<totalPages; i++) {
+      if (totalPages>7 && i>1 && i<totalPages-2 && Math.abs(i-page)>1) {
+        if (i===2 || i===totalPages-3) html += '<span style="padding:6px;color:var(--fg-muted)">...</span>';
+        continue;
+      }
+      html += `<button class="page-btn ${i===page?'active':''}" data-page="${i}">${i+1}</button>`;
+    }
+    html += `<button class="page-btn" ${page>=totalPages-1?'disabled':''} data-page="${page+1}">&raquo;</button>`;
+    pag.innerHTML = html;
+    pag.querySelectorAll('.page-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        page = parseInt(btn.dataset.page); renderList(); renderPagination();
+        $('#findings-list').scrollIntoView({behavior:'smooth',block:'start'});
+      });
+    });
+  }
+
+  // ---------- Detail panel ----------
+  function renderDetail() {
+    const panel = $('#detail-panel');
+    if (!selectedId) { panel.innerHTML = '<div class="detail-empty">Select a finding to view details</div>'; return; }
+    const f = data.findings.find(x => x.id === selectedId);
+    if (!f) return;
+
+    const codeHtml = f.code_snippet ? renderCode(f.code_snippet, f.line) : '';
+    panel.innerHTML = `
+      <div class="detail-header">
+        <div class="detail-sev" data-sev="${f.severity||'low'}">${(f.severity||'low').toUpperCase()}${f.cwe_id?` &middot; CWE-${esc(f.cwe_id)}`:''}</div>
+        <div class="detail-title">${esc(f.message)}</div>
+        <div class="detail-loc">${esc(f.file)}:${f.line||'?'}${f.column?':'+f.column:''}</div>
+      </div>
+      ${f.cwe_name ? `<div class="detail-section"><div class="detail-section-title">CWE</div><div class="detail-message"><strong>${esc(f.cwe_name)}</strong></div></div>` : ''}
+      ${f.category ? `<div class="detail-section"><div class="detail-section-title">Category</div><div class="detail-message">${esc(f.category)}</div></div>` : ''}
+      <div class="detail-section">
+        <div class="detail-section-title">Detected By (${(f.analyzers||[]).length})</div>
+        ${(f.analyzers||[]).map(a => `<div class="analyzer-row"><div class="analyzer-dot"></div><span>${esc(a)}</span></div>`).join('')}
+      </div>
+      ${codeHtml ? `<div class="detail-section"><div class="detail-section-title">Code</div><div class="detail-code">${codeHtml}</div></div>` : ''}
+      ${f.llm_verdict ? `
+        <div class="detail-section">
+          <div class="detail-section-title">LLM Triage</div>
+          <div class="llm-verdict" data-v="${f.llm_verdict}"><strong>${verdictLabel(f.llm_verdict)}</strong></div>
+          ${f.llm_explanation ? `<div class="llm-explanation">${esc(f.llm_explanation)}</div>` : ''}
+        </div>` : ''}
+      ${f.score_breakdown ? `
+        <div class="detail-section">
+          <div class="detail-section-title">Score Breakdown</div>
+          <dl class="score-breakdown">
+            <dt>Corroboration</dt><dd>${(f.score_breakdown.corroboration||0).toFixed(2)}</dd>
+            <div class="score-bar-track"><div class="score-bar-fill" style="width:${(f.score_breakdown.corroboration||0)*100}%"></div></div>
+            <dt>CWE Severity</dt><dd>${(f.score_breakdown.cwe_severity||0).toFixed(2)}</dd>
+            <div class="score-bar-track"><div class="score-bar-fill" style="width:${(f.score_breakdown.cwe_severity||0)*100}%"></div></div>
+            <dt>Taint</dt><dd>${(f.score_breakdown.taint||0).toFixed(2)}</dd>
+            <div class="score-bar-track"><div class="score-bar-fill" style="width:${(f.score_breakdown.taint||0)*100}%"></div></div>
+            <dt>Centrality</dt><dd>${(f.score_breakdown.centrality||0).toFixed(2)}</dd>
+            <div class="score-bar-track"><div class="score-bar-fill" style="width:${(f.score_breakdown.centrality||0)*100}%"></div></div>
+          </dl>
+        </div>` : ''}
+    `;
+  }
+
+  function renderCode(snippet, targetLine) {
+    const lines = snippet.split('\n');
+    const start = Math.max(1, (targetLine||1) - Math.floor(lines.length/2));
+    return lines.map((line,i) => {
+      const n = start+i;
+      return `<span class="code-line${n===targetLine?' highlighted':''}"><span class="code-line-num">${n}</span>${esc(line)}</span>`;
+    }).join('\n');
+  }
+
+  // ============ CODEBASE MAP ============
+
+  // Treemap sizing mode buttons
+  $$('.map-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('.map-mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      mapSizer = btn.dataset.sizer;
+      renderTreemap();
+    });
+  });
+
+  function getMapNode() {
+    let node = data.codemap;
+    if (!node) return null;
+    for (const seg of mapPath) {
+      const child = (node.children || []).find(c => c.name === seg);
+      if (!child || child.markers) { mapPath = mapPath.slice(0, mapPath.indexOf(seg)); break; }
+      node = child;
+    }
+    return node;
+  }
+
+  function renderBreadcrumb() {
+    const bc = $('#breadcrumb');
+    let parts = ['root', ...mapPath];
+    bc.innerHTML = parts.map((p, i) => {
+      const isCurrent = i === parts.length - 1;
+      const cls = isCurrent ? 'breadcrumb-item current' : 'breadcrumb-item';
+      return (i > 0 ? '<span class="breadcrumb-sep">/</span>' : '') +
+        `<button class="${cls}" data-depth="${i}">${esc(p)}</button>`;
+    }).join('');
+
+    bc.querySelectorAll('.breadcrumb-item:not(.current)').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const depth = parseInt(btn.dataset.depth);
+        mapPath = mapPath.slice(0, depth);
+        renderTreemap();
+      });
+    });
+  }
+
+  function renderTreemap() {
+    const node = getMapNode();
+    if (!node || !node.children || !node.children.length) {
+      $('#treemap-wrapper').innerHTML = '<div class="map-empty">No codebase map data available.<br>Re-run scan to generate codemap data.</div>';
+      return;
+    }
+    if (!$('#treemap-svg')) {
+      $('#treemap-wrapper').innerHTML = '<svg id="treemap-svg"></svg>';
+    }
+
+    renderBreadcrumb();
+
+    const wrapper = $('#treemap-wrapper');
+    const w = wrapper.clientWidth || 800;
+    const h = Math.max(400, Math.min(600, w * 0.55));
+
+    const sevColors = {
+      critical: 'var(--critical)', high: 'var(--high)',
+      medium: 'var(--medium)', low: 'var(--low)', none: 'var(--none)',
+    };
+    const sevColorHex = () => {
+      const cs = getComputedStyle(document.documentElement);
+      return {
+        critical: cs.getPropertyValue('--critical').trim(),
+        high: cs.getPropertyValue('--high').trim(),
+        medium: cs.getPropertyValue('--medium').trim(),
+        low: cs.getPropertyValue('--low').trim(),
+        none: cs.getPropertyValue('--none').trim(),
+      };
+    };
+
+    const hierarchy = d3.hierarchy(node)
+      .sum(d => {
+        if (d.children) return 0;
+        const val = mapSizer === 'findings' ? (d.findings || 0) : (d.loc || 1);
+        return Math.max(val, 1);
+      })
+      .sort((a,b) => (b.value||0)-(a.value||0));
+
+    const treemap = d3.treemap()
+      .size([w, h])
+      .paddingInner(2)
+      .paddingOuter(3)
+      .round(true);
+
+    treemap(hierarchy);
+
+    const svg = d3.select('#treemap-svg')
+      .attr('width', w)
+      .attr('height', h)
+      .attr('viewBox', `0 0 ${w} ${h}`);
+
+    svg.selectAll('*').remove();
+
+    const leaves = hierarchy.leaves();
+    const colors = sevColorHex();
+
+    const cells = svg.selectAll('g')
+      .data(leaves)
+      .join('g')
+      .attr('transform', d => `translate(${d.x0},${d.y0})`);
+
+    cells.append('rect')
+      .attr('width', d => Math.max(0, d.x1 - d.x0))
+      .attr('height', d => Math.max(0, d.y1 - d.y0))
+      .attr('rx', 3)
+      .attr('fill', d => {
+        const sev = d.data.worst_severity || 'none';
+        const base = colors[sev] || colors.none;
+        const opacity = d.data.findings > 0 ? Math.min(0.3 + (d.data.findings / 20) * 0.7, 1) : 0.25;
+        return base;
+      })
+      .attr('opacity', d => d.data.findings > 0 ? Math.min(0.4 + (d.data.findings / 15) * 0.6, 1) : 0.3)
+      .attr('stroke', 'var(--bg)')
+      .attr('stroke-width', 1)
+      .style('cursor', d => d.data.children ? 'pointer' : 'pointer');
+
+    cells.each(function(d) {
+      const cw = d.x1 - d.x0;
+      const ch = d.y1 - d.y0;
+      if (cw > 40 && ch > 18) {
+        const maxChars = Math.floor(cw / 7);
+        let label = d.data.name;
+        if (label.length > maxChars) label = label.slice(0, maxChars - 1) + '…';
+        d3.select(this).append('text')
+          .attr('class', 'treemap-label')
+          .attr('x', 4)
+          .attr('y', 13)
+          .attr('font-size', Math.min(12, ch / 2.5))
+          .text(label);
+      }
+      if (cw > 50 && ch > 30 && d.data.findings > 0) {
+        d3.select(this).append('text')
+          .attr('class', 'treemap-sublabel')
+          .attr('x', 4)
+          .attr('y', 25)
+          .text(`${d.data.findings} finding${d.data.findings!==1?'s':''}`);
+      }
+    });
+
+    cells.on('click', (event, d) => {
+      const nodeData = d.data;
+      if (nodeData.children && nodeData.children.length) {
+        mapPath.push(nodeData.name);
+        renderTreemap();
+      } else if (nodeData.markers) {
+        renderFilePanel(nodeData);
+      }
+    });
+
+    cells.on('mouseenter', (event, d) => {
+      showTooltip(event, d.data);
+    }).on('mousemove', (event) => {
+      if (tooltip) {
+        tooltip.style.left = (event.clientX + 12) + 'px';
+        tooltip.style.top = (event.clientY - 10) + 'px';
+      }
+    }).on('mouseleave', () => {
+      hideTooltip();
+    });
+  }
+
+  function showTooltip(event, d) {
+    hideTooltip();
+    tooltip = document.createElement('div');
+    tooltip.className = 'marker-tooltip';
+    const isFile = !!d.markers;
+    tooltip.innerHTML = `
+      <div class="tt-line">${esc(d.path || d.name)}</div>
+      <div class="tt-msg">${d.findings} finding${d.findings!==1?'s':''} &middot; ${d.loc.toLocaleString()} lines</div>
+      ${d.worst_severity !== 'none' ? `<div class="tt-meta">Worst: ${d.worst_severity}</div>` : ''}
+      ${!isFile && d.children ? `<div class="tt-meta">Click to drill in</div>` : ''}
+      ${isFile ? `<div class="tt-meta">Click to view markers</div>` : ''}
+    `;
+    tooltip.style.left = (event.clientX + 12) + 'px';
+    tooltip.style.top = (event.clientY - 10) + 'px';
+    document.body.appendChild(tooltip);
+  }
+
+  function hideTooltip() {
+    if (tooltip) { tooltip.remove(); tooltip = null; }
+  }
+
+  function renderFilePanel(fileNode) {
+    const panel = $('#map-file-panel');
+    if (!fileNode || !fileNode.markers || !fileNode.markers.length) {
+      panel.innerHTML = '<div class="map-empty">No findings in this file</div>';
+      return;
+    }
+
+    const markers = fileNode.markers;
+    const loc = fileNode.loc || 1;
+
+    const gutterHeight = Math.max(200, Math.min(400, markers.length * 8));
+
+    panel.innerHTML = `
+      <div class="map-file-header">${esc(fileNode.path || fileNode.name)}</div>
+      <div class="map-file-stats">
+        <span><strong>${markers.length}</strong> findings</span>
+        <span><strong>${loc.toLocaleString()}</strong> lines</span>
+        <span>Worst: <strong style="color:var(--${fileNode.worst_severity})">${fileNode.worst_severity}</strong></span>
+      </div>
+      <div class="file-gutter" style="height:${gutterHeight+24}px">
+        <div class="gutter-track" id="gutter-track" style="height:${gutterHeight}px">
+          ${markers.map((m, i) => {
+            const top = Math.min((m.line / loc) * 100, 99);
+            return `<div class="gutter-marker" data-sev="${m.severity}" data-idx="${i}"
+              style="top:${top}%" title="Line ${m.line}"></div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="map-findings-list">
+        ${markers.map((m,i) => `
+          <div class="map-finding-item" data-idx="${i}">
+            <div class="severity-bar" data-sev="${m.severity}"></div>
+            <div>
+              <div class="mf-line">Line ${m.line}</div>
+              <div class="mf-msg">${esc(truncate(m.message, 100))}</div>
+              <div class="mf-meta">
+                ${m.cwe_id ? `CWE-${esc(m.cwe_id)}` : ''}
+                ${m.function ? ` &middot; ${esc(m.function)}()` : ''}
+                ${(m.analyzers||[]).length ? ` &middot; ${m.analyzers.join(', ')}` : ''}
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    panel.querySelectorAll('.gutter-marker').forEach(el => {
+      el.addEventListener('mouseenter', (e) => {
+        const idx = parseInt(el.dataset.idx);
+        const m = markers[idx];
+        showTooltip(e, {
+          path: `Line ${m.line}`,
+          findings: 1, loc: 0,
+          worst_severity: m.severity,
+          name: m.message,
+        });
+        if (tooltip) {
+          tooltip.innerHTML = `
+            <div class="tt-line">Line ${m.line}</div>
+            <div class="tt-msg">${esc(truncate(m.message, 120))}</div>
+            <div class="tt-meta">${m.cwe_id ? `CWE-${m.cwe_id}` : ''} ${m.function ? m.function+'()' : ''}</div>
+          `;
+        }
+      });
+      el.addEventListener('mouseleave', hideTooltip);
+    });
+
+    panel.querySelectorAll('.map-finding-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.dataset.idx);
+        const m = markers[idx];
+        if (m.id) {
+          selectedId = m.id;
+          $$('.tab-btn').forEach(b => b.classList.remove('active'));
+          $$('.tab-content').forEach(t => t.classList.remove('active'));
+          $$('.tab-btn')[0].classList.add('active');
+          $('#tab-findings').classList.add('active');
+          renderDetail();
+        }
+      });
+    });
+  }
+
+  // ---------- Helpers ----------
+  function esc(s) {
+    if (s == null) return '';
+    const el = document.createElement('span');
+    el.textContent = String(s);
+    return el.innerHTML;
+  }
+  function truncate(s,n) { return !s ? '' : s.length > n ? s.slice(0,n)+'...' : s; }
+  function shortPath(p) {
+    if (!p) return 'unknown';
+    const parts = p.split('/');
+    return parts.length > 3 ? '.../' + parts.slice(-3).join('/') : p;
+  }
+  function sevOrder(s) { return {critical:0,high:1,medium:2,low:3}[s]??4; }
+  function verdictLabel(v) { return {confirmed:'Confirmed Bug',likely:'Likely Bug',unlikely:'Unlikely',false_positive:'False Positive'}[v]||v; }
+
+  // ---------- Demo data ----------
+  function generateDemoData() {
+    const dirs = ['src/net','src/core','src/util','src/auth','src/parse'];
+    const fileNames = ['packet.c','memory.c','string.c','session.c','json.c','handler.c','alloc.c','buffer.c'];
+    const cwes = [
+      {id:'120',name:'Buffer Overflow',sev:'critical'},
+      {id:'416',name:'Use After Free',sev:'critical'},
+      {id:'476',name:'NULL Pointer Dereference',sev:'high'},
+      {id:'401',name:'Memory Leak',sev:'medium'},
+      {id:'190',name:'Integer Overflow',sev:'high'},
+    ];
+    const analyzers = ['gcc-fanalyzer','clang-sa','cppcheck','flawfinder','semgrep'];
+    const findings = [];
+    const codemap = { name: '/', children: [], findings: 0, loc: 0, worst_severity: 'none' };
+
+    dirs.forEach(dir => {
+      const dirNode = { name: dir.split('/').pop(), children: [], findings: 0, loc: 0, worst_severity: 'none' };
+      const nFiles = 2 + Math.floor(Math.random()*3);
+      for (let fi = 0; fi < nFiles; fi++) {
+        const fname = fileNames[(dirs.indexOf(dir)*3+fi)%fileNames.length];
+        const fpath = dir+'/'+fname;
+        const loc = 100 + Math.floor(Math.random()*500);
+        const nFind = 1 + Math.floor(Math.random()*8);
+        const markers = [];
+        for (let j = 0; j < nFind; j++) {
+          const cwe = cwes[j%cwes.length];
+          const line = 10 + Math.floor(Math.random()*loc);
+          const usedAn = analyzers.filter(()=>Math.random()>0.5);
+          if (!usedAn.length) usedAn.push(analyzers[0]);
+          const fid = `f-${findings.length}`;
+          findings.push({
+            id: fid, file: fpath, line, column: 5, message: `${cwe.name} in ${fname}`,
+            severity: cwe.sev, cwe_id: cwe.id, cwe_name: cwe.name, analyzers: usedAn,
+            composite_score: Math.random()*0.8+0.2,
+            score_breakdown: { corroboration: Math.random(), cwe_severity: Math.random(), taint: Math.random(), centrality: Math.random() },
+          });
+          markers.push({ line, severity: cwe.sev, cwe_id: cwe.id, message: `${cwe.name} in ${fname}`, analyzers: usedAn, id: fid });
+        }
+        markers.sort((a,b) => a.line-b.line);
+        const ws = markers.reduce((w,m) => sevOrder(m.severity)<sevOrder(w)?m.severity:w, 'none');
+        dirNode.children.push({ name: fname, path: fpath, loc, findings: nFind, worst_severity: ws, markers });
+        dirNode.findings += nFind;
+        dirNode.loc += loc;
+        if (sevOrder(ws) < sevOrder(dirNode.worst_severity)) dirNode.worst_severity = ws;
+      }
+      codemap.children.push(dirNode);
+      codemap.findings += dirNode.findings;
+      codemap.loc += dirNode.loc;
+      if (sevOrder(dirNode.worst_severity) < sevOrder(codemap.worst_severity)) codemap.worst_severity = dirNode.worst_severity;
+    });
+
+    const bySev={},byCwe={},byAn={};
+    findings.forEach(f => {
+      bySev[f.severity]=(bySev[f.severity]||0)+1;
+      if(f.cwe_id){const k=`CWE-${f.cwe_id} ${f.cwe_name}`;byCwe[k]=(byCwe[k]||0)+1;}
+      (f.analyzers||[]).forEach(a=>{byAn[a]=(byAn[a]||0)+1;});
+    });
+    return {
+      findings, codemap,
+      summary: { by_severity: bySev, by_cwe: byCwe, by_analyzer: byAn },
+      metadata: { target: '/demo/project/src', analyzers_used: analyzers, timestamp: new Date().toISOString() },
+    };
+  }
+
+  // ---------- Auto-load ----------
+  if (window.__VENOM_DATA__) {
+    data = window.__VENOM_DATA__;
+    init();
+  } else {
+    try {
+      fetch('venom-data.json')
+        .then(r => { if (r.ok) return r.json(); throw new Error(); })
+        .then(d => { data = d; init(); })
+        .catch(() => {});
+    } catch(e) {}
+  }
+})();
+</script>
+</body>
+</html>

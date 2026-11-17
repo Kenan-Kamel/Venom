@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "venom"
+version = "0.1.0"
+description = "LLM-assisted unified static analyzer for practical bug detection in C/C++"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Kenan Alghamdi", email = "kalghy2@uic.edu" },
+]
+keywords = ["static-analysis", "security", "c", "cpp", "bug-detection", "llm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+llm = ["anthropic>=0.39.0"]
+semgrep = ["semgrep>=1.50.0"]
+flawfinder = ["flawfinder>=2.0.0"]
+all = [
+    "anthropic>=0.39.0",
+    "semgrep>=1.50.0",
+    "flawfinder>=2.0.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+venom = "venom.cli:main"
+
+[project.urls]
+Repository = "https://github.com/kalghamdi/venom"
+
+[tool.setuptools.packages.find]
+include = ["venom*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
